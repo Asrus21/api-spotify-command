@@ -9,19 +9,26 @@ const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
 
-// Armazena tokens em memória (por simplicidade)
-let accessToken = null;
-let refreshToken = null;
+// Armazena tokens por usuário: { userId: { accessToken, refreshToken } }
+const users = {};
 
 // ─── ROTA 1: Link de autorização ─────────────────────────────────────────────
+// Uso: /auth?user=thiagolive
 app.get("/auth", (req, res) => {
+  const userId = req.query.user;
+
+  if (!userId) {
+    return res.send("❌ Informe um usuário. Ex: /auth?user=thiagolive");
+  }
+
   const scope = "user-read-currently-playing user-read-playback-state";
   const authUrl =
     `https://accounts.spotify.com/authorize?` +
     `client_id=${CLIENT_ID}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&scope=${encodeURIComponent(scope)}`;
+    `&scope=${encodeURIComponent(scope)}` +
+    `&state=${encodeURIComponent(userId)}`;
 
   res.redirect(authUrl);
 });
@@ -29,9 +36,10 @@ app.get("/auth", (req, res) => {
 // ─── ROTA 2: Callback do Spotify ──────────────────────────────────────────────
 app.get("/callback", async (req, res) => {
   const code = req.query.code;
+  const userId = req.query.state;
 
-  if (!code) {
-    return res.send("❌ Autorização negada.");
+  if (!code || !userId) {
+    return res.send("❌ Autorização negada ou usuário inválido.");
   }
 
   try {
@@ -47,14 +55,20 @@ app.get("/callback", async (req, res) => {
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
-    accessToken = tokenRes.data.access_token;
-    refreshToken = tokenRes.data.refresh_token;
+    users[userId] = {
+      accessToken: tokenRes.data.access_token,
+      refreshToken: tokenRes.data.refresh_token,
+    };
 
     res.send(`
       <html>
         <body style="font-family:sans-serif;text-align:center;padding:60px;background:#191414;color:#fff;">
           <h2>✅ Autorização concedida!</h2>
-          <p>Agora use o comando <strong>!musica</strong> no chat.</p>
+          <p>Usuário: <strong>${userId}</strong></p>
+          <p>Use o comando no chat com:</p>
+          <code style="background:#333;padding:10px;border-radius:6px;display:inline-block;margin-top:10px;">
+            /musica?user=${userId}
+          </code>
         </body>
       </html>
     `);
@@ -64,31 +78,42 @@ app.get("/callback", async (req, res) => {
   }
 });
 
-// ─── Refresh do token ─────────────────────────────────────────────────────────
-async function refreshAccessToken() {
+// ─── Refresh do token por usuário ─────────────────────────────────────────────
+async function refreshAccessToken(userId) {
+  const user = users[userId];
+  if (!user?.refreshToken) throw new Error("Sem refresh token");
+
   const res = await axios.post(
     "https://accounts.spotify.com/api/token",
     new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: refreshToken,
+      refresh_token: user.refreshToken,
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
     }),
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
   );
-  accessToken = res.data.access_token;
+
+  users[userId].accessToken = res.data.access_token;
 }
 
-// ─── ROTA 3: Comando !musica ───────────────────────────────────────────────────
+// ─── ROTA 3: Música atual por usuário ─────────────────────────────────────────
+// Uso: /musica?user=thiagolive
 app.get("/musica", async (req, res) => {
-  if (!accessToken) {
-    return res.send("❌ Nenhuma autorização ainda. Acesse /auth primeiro.");
+  const userId = req.query.user;
+
+  if (!userId) {
+    return res.send("❌ Informe um usuário. Ex: /musica?user=thiagolive");
+  }
+
+  if (!users[userId]) {
+    return res.send(`❌ Usuário "${userId}" não autorizou ainda. Acesse /auth?user=${userId}`);
   }
 
   try {
     const playing = await axios.get(
       "https://api.spotify.com/v1/me/player/currently-playing",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      { headers: { Authorization: `Bearer ${users[userId].accessToken}` } }
     );
 
     if (!playing.data || !playing.data.item) {
@@ -100,16 +125,14 @@ app.get("/musica", async (req, res) => {
     const artists = track.artists.map((a) => a.name).join(", ");
     const link = track.external_urls.spotify;
 
-    const response = `🎵 Tocando agora: ${name} - ${artists} | ${link}`;
-    res.send(response);
+    res.send(`🎵 Tocando agora: ${name} - ${artists} | ${link}`);
   } catch (err) {
-    // Token expirado → tenta renovar
-    if (err.response?.status === 401 && refreshToken) {
+    if (err.response?.status === 401) {
       try {
-        await refreshAccessToken();
-        return res.redirect("/musica");
+        await refreshAccessToken(userId);
+        return res.redirect(`/musica?user=${userId}`);
       } catch {
-        return res.send("❌ Erro ao renovar token. Reautorize em /auth");
+        return res.send(`❌ Erro ao renovar token. Reautorize em /auth?user=${userId}`);
       }
     }
     res.send("❌ Erro ao buscar música.");
@@ -119,6 +142,6 @@ app.get("/musica", async (req, res) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🎵 Servidor rodando em http://localhost:${PORT}`);
-  console.log(`🔗 Link de autorização: http://localhost:${PORT}/auth`);
-  console.log(`🎧 Comando !musica:     http://localhost:${PORT}/musica\n`);
+  console.log(`🔗 Autorizar usuário: http://localhost:${PORT}/auth?user=SEU_NOME`);
+  console.log(`🎧 Buscar música:     http://localhost:${PORT}/musica?user=SEU_NOME\n`);
 });
