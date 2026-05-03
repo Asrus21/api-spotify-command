@@ -146,8 +146,8 @@ app.get("/musica/:userId", async (req, res) => {
       { headers: { Authorization: `Bearer ${user.accessToken}` } }
     );
 
-    if (!playing.data || !playing.data.item) {
-      return res.send("🔇 Nenhuma música tocando no momento.");
+    if (!playing.data || playing.status === 204 || !playing.data.item) {
+      return res.send("😶 Não está sendo tocado nada agora.");
     }
 
     const track = playing.data.item;
@@ -165,8 +165,8 @@ app.get("/musica/:userId", async (req, res) => {
           { headers: { Authorization: `Bearer ${newToken}` } }
         );
 
-        if (!playing.data || !playing.data.item) {
-          return res.send("🔇 Nenhuma música tocando no momento.");
+        if (!playing.data || playing.status === 204 || !playing.data.item) {
+          return res.send("😶 Não está sendo tocado nada agora.");
         }
 
         const track = playing.data.item;
