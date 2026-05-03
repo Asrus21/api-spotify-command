@@ -144,12 +144,12 @@ async function fetchCurrentTrack(token) {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 
-  if (!playing.data || playing.status === 204 || !playing.data.item) {
+  if (!playing.data || playing.status === 204 || !playing.data.item || !playing.data.is_playing) {
     return null;
   }
 
   const track = playing.data.item;
-  return `🎵 Está tocando agora a música: ${track.name} - ${track.artists.map((a) => a.name).join(", ")} | ${track.external_urls.spotify} 🎵`;
+  return `🎵 Está tocando agora a música: ${track.name} - ${track.artists.map((a) => a.name).join(", ")} | ${track.external_urls.spotify}  🎵`;
 }
 
 // ─── ROTA 3: Música atual ─────────────────────────────────────────────────────
@@ -182,10 +182,12 @@ app.get("/musica/:userId", async (req, res) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-initDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`\n🎵 Servidor rodando na porta ${PORT}`);
-    console.log(`🔗 Registrar: ${BASE_URL}/register\n`);
-  });
+app.listen(PORT, () => {
+  console.log(`\n🎵 Servidor rodando na porta ${PORT}`);
+  console.log(`🔗 Registrar: ${BASE_URL}/register\n`);
 });
 
+initDB().catch((err) => {
+  console.error("❌ Erro ao conectar ao banco:", err.message);
+  console.error("Verifique a variável DATABASE_URL.");
+});
