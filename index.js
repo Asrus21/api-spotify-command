@@ -188,3 +188,5 @@ initDB().then(() => {
     console.log(`🔗 Registrar: ${BASE_URL}/register\n`);
   });
 });
+
+// Doing a little test on my code.
