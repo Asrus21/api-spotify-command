@@ -149,7 +149,7 @@ async function fetchCurrentTrack(token) {
   }
 
   const track = playing.data.item;
-  return `🎵 Tocando agora: ${track.name} - ${track.artists.map((a) => a.name).join(", ")} | ${track.external_urls.spotify}`;
+  return `🎵 Está tocando agora a música: ${track.name} - ${track.artists.map((a) => a.name).join(", ")} | ${track.external_urls.spotify} 🎵`;
 }
 
 // ─── ROTA 3: Música atual ─────────────────────────────────────────────────────
@@ -189,4 +189,3 @@ initDB().then(() => {
   });
 });
 
-// Doing a little test on my code.
