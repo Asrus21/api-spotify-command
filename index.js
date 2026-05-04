@@ -20,44 +20,51 @@ const pool = new Pool({
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tokens (
-      user_id     TEXT PRIMARY KEY,
+      spotify_id    TEXT PRIMARY KEY,
+      command_id    TEXT UNIQUE NOT NULL,
       access_token  TEXT,
       refresh_token TEXT,
-      created_at  TIMESTAMP DEFAULT NOW()
+      created_at    TIMESTAMP DEFAULT NOW()
     )
   `);
   console.log("✅ Banco de dados pronto.");
 }
 
-async function getUser(userId) {
-  const res = await pool.query("SELECT * FROM tokens WHERE user_id = $1", [userId]);
+async function getUserBySpotifyId(spotifyId) {
+  const res = await pool.query("SELECT * FROM tokens WHERE spotify_id = $1", [spotifyId]);
   return res.rows[0] || null;
 }
 
-async function saveUser(userId, accessToken, refreshToken) {
+async function getUserByCommandId(commandId) {
+  const res = await pool.query("SELECT * FROM tokens WHERE command_id = $1", [commandId]);
+  return res.rows[0] || null;
+}
+
+async function saveUser(spotifyId, commandId, accessToken, refreshToken) {
   await pool.query(`
-    INSERT INTO tokens (user_id, access_token, refresh_token)
-    VALUES ($1, $2, $3)
-    ON CONFLICT (user_id) DO UPDATE
-    SET access_token = $2, refresh_token = $3
-  `, [userId, accessToken, refreshToken]);
+    INSERT INTO tokens (spotify_id, command_id, access_token, refresh_token)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (spotify_id) DO UPDATE
+    SET access_token = $3, refresh_token = $4
+  `, [spotifyId, commandId, accessToken, refreshToken]);
 }
 
-async function updateAccessToken(userId, accessToken) {
-  await pool.query("UPDATE tokens SET access_token = $1 WHERE user_id = $2", [accessToken, userId]);
+async function updateAccessToken(spotifyId, accessToken) {
+  await pool.query("UPDATE tokens SET access_token = $1 WHERE spotify_id = $2", [accessToken, spotifyId]);
 }
 
-// ─── ROTA 1: Gerar link único de autorização ──────────────────────────────────
+// ─── ROTA 1: Gerar link de autorização ───────────────────────────────────────
 app.get("/register", (req, res) => {
-  const userId = uuidv4().replace(/-/g, "").slice(0, 12);
+  // Gera um state temporário só para o fluxo OAuth
+  const state = uuidv4().replace(/-/g, "").slice(0, 12);
 
   const authUrl =
     `https://accounts.spotify.com/authorize?` +
     `client_id=${CLIENT_ID}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state")}` +
-    `&state=${userId}`;
+    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state user-read-private")}` +
+    `&state=${state}`;
 
   res.send(`
     <html>
@@ -75,11 +82,12 @@ app.get("/register", (req, res) => {
 
 // ─── ROTA 2: Callback do Spotify ──────────────────────────────────────────────
 app.get("/callback", async (req, res) => {
-  const { code, state: userId } = req.query;
+  const { code } = req.query;
 
-  if (!code || !userId) return res.send("❌ Autorização negada.");
+  if (!code) return res.send("❌ Autorização negada.");
 
   try {
+    // 1. Pega os tokens
     const tokenRes = await axios.post(
       "https://accounts.spotify.com/api/token",
       new URLSearchParams({
@@ -92,22 +100,40 @@ app.get("/callback", async (req, res) => {
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
-    await saveUser(userId, tokenRes.data.access_token, tokenRes.data.refresh_token);
+    const accessToken = tokenRes.data.access_token;
+    const refreshToken = tokenRes.data.refresh_token;
+
+    // 2. Busca o ID real do usuário no Spotify
+    const profileRes = await axios.get("https://api.spotify.com/v1/me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const spotifyId = profileRes.data.id;
+
+    // 3. Verifica se já existe um command_id para essa conta
+    const existing = await getUserBySpotifyId(spotifyId);
+    const commandId = existing ? existing.command_id : uuidv4().replace(/-/g, "").slice(0, 12);
+
+    // 4. Salva ou atualiza os tokens
+    await saveUser(spotifyId, commandId, accessToken, refreshToken);
 
     res.send(`
       <html>
         <body style="font-family:sans-serif;text-align:center;padding:60px;background:#191414;color:#fff;">
           <h2>✅ Autorizado com sucesso!</h2>
-          <p style="color:#aaa;">Use o link abaixo no seu bot:</p>
+          <p style="color:#aaa;">Conta Spotify: <strong>${profileRes.data.display_name || spotifyId}</strong></p>
+          <p style="color:#aaa;margin-top:24px;">Use o link abaixo no seu bot:</p>
           <code style="background:#333;padding:12px 24px;border-radius:6px;display:inline-block;margin:16px 0;font-size:15px;">
-            ${BASE_URL}/musica/${userId}
+            ${BASE_URL}/musica/${commandId}
           </code>
           <br><br>
           <p style="color:#aaa;font-size:13px;">Nightbot:</p>
-          <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">$(urlfetch ${BASE_URL}/musica/${userId})</code>
+          <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">$(urlfetch ${BASE_URL}/musica/${commandId})</code>
           <br><br>
           <p style="color:#aaa;font-size:13px;">StreamElements:</p>
-          <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">${"${customapi." + BASE_URL + "/musica/" + userId + "}"}</code>
+          <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">${"${customapi." + BASE_URL + "/musica/" + commandId + "}"}</code>
+          <br><br>
+          <p style="color:#1DB954;font-size:13px;">⚠️ Esse link é permanente — mesmo se você reautorizar, o comando não muda.</p>
         </body>
       </html>
     `);
@@ -118,22 +144,19 @@ app.get("/callback", async (req, res) => {
 });
 
 // ─── Refresh do token ─────────────────────────────────────────────────────────
-async function refreshAccessToken(userId) {
-  const user = await getUser(userId);
-  if (!user?.refresh_token) throw new Error("Sem refresh token");
-
+async function refreshAccessToken(spotifyId, refreshToken) {
   const res = await axios.post(
     "https://accounts.spotify.com/api/token",
     new URLSearchParams({
       grant_type: "refresh_token",
-      refresh_token: user.refresh_token,
+      refresh_token: refreshToken,
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
     }),
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
   );
 
-  await updateAccessToken(userId, res.data.access_token);
+  await updateAccessToken(spotifyId, res.data.access_token);
   return res.data.access_token;
 }
 
@@ -148,14 +171,19 @@ async function fetchCurrentTrack(token) {
     return null;
   }
 
-  const track = playing.data.item;
-  return `🎵 Está tocando agora a música: ${track.name} - ${track.artists.map((a) => a.name).join(", ")} | ${track.external_urls.spotify}  🎵`;
+  // Suporte a músicas e podcasts
+  const item = playing.data.item;
+  if (playing.data.currently_playing_type === "episode") {
+    return `🎙️ Ouvindo agora: ${item.name} - ${item.show?.name} | ${item.external_urls.spotify}`;
+  }
+
+  return `🎵 Tocando agora: ${item.name} - ${item.artists.map((a) => a.name).join(", ")} | ${item.external_urls.spotify}`;
 }
 
 // ─── ROTA 3: Música atual ─────────────────────────────────────────────────────
-app.get("/musica/:userId", async (req, res) => {
-  const { userId } = req.params;
-  const user = await getUser(userId);
+app.get("/musica/:commandId", async (req, res) => {
+  const { commandId } = req.params;
+  const user = await getUserByCommandId(commandId);
 
   if (!user || !user.access_token) {
     return res.send("❌ ID inválido ou não autorizado.");
@@ -168,15 +196,15 @@ app.get("/musica/:userId", async (req, res) => {
   } catch (err) {
     if (err.response?.status === 401) {
       try {
-        const newToken = await refreshAccessToken(userId);
+        const newToken = await refreshAccessToken(user.spotify_id, user.refresh_token);
         const result = await fetchCurrentTrack(newToken);
         if (!result) return res.send("😶 Não está sendo tocado nada agora.");
         return res.send(result);
       } catch {
-        return res.send("❌ Sessão expirada. Registre-se novamente em /register");
+        return res.send("❌ Sessão expirada. Reautorize em /register");
       }
     }
-    console.error(err.message);
+    console.error(err.response?.data || err.message);
     res.send("❌ Erro ao buscar música.");
   }
 });
@@ -189,5 +217,4 @@ app.listen(PORT, () => {
 
 initDB().catch((err) => {
   console.error("❌ Erro ao conectar ao banco:", err.message);
-  console.error("Verifique a variável DATABASE_URL.");
 });
