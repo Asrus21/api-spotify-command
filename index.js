@@ -18,6 +18,8 @@ const pool = new Pool({
 });
 
 async function initDB() {
+  // Dropa a tabela antiga e recria com a nova estrutura
+  await pool.query(`DROP TABLE IF EXISTS tokens`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tokens (
       spotify_id    TEXT PRIMARY KEY,
@@ -63,7 +65,7 @@ app.get("/register", (req, res) => {
     `client_id=${CLIENT_ID}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state user-read-private")}` +
+    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state")}` +
     `&state=${state}`;
 
   res.send(`
