@@ -135,7 +135,6 @@ app.get("/callback", async (req, res) => {
           <p style="color:#aaa;font-size:13px;">StreamElements:</p>
           <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">${"${customapi." + BASE_URL + "/musica/" + commandId + "}"}</code>
           <br><br>
-          <p style="color:#1DB954;font-size:13px;">⚠️ Esse link é permanente — mesmo se você reautorizar, o comando não muda.</p>
         </body>
       </html>
     `);
