@@ -18,8 +18,7 @@ const pool = new Pool({
 });
 
 async function initDB() {
-  // Dropa a tabela antiga e recria com a nova estrutura
-  await pool.query(`DROP TABLE IF EXISTS tokens`);
+  // Cria a tabela se não existir
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tokens (
       spotify_id    TEXT PRIMARY KEY,
@@ -29,6 +28,14 @@ async function initDB() {
       created_at    TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // Migração segura: adiciona colunas novas se ainda não existirem
+  await pool.query(`
+    ALTER TABLE tokens
+    ADD COLUMN IF NOT EXISTS spotify_id TEXT,
+    ADD COLUMN IF NOT EXISTS command_id TEXT
+  `).catch(() => {}); // ignora se já existir
+
   console.log("✅ Banco de dados pronto.");
 }
 
@@ -135,6 +142,7 @@ app.get("/callback", async (req, res) => {
           <p style="color:#aaa;font-size:13px;">StreamElements:</p>
           <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">${"${customapi." + BASE_URL + "/musica/" + commandId + "}"}</code>
           <br><br>
+          <p style="color:#1DB954;font-size:13px;">⚠️ Esse link é permanente — mesmo se você reautorizar, o comando não muda.</p>
         </body>
       </html>
     `);
