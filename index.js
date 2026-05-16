@@ -72,7 +72,7 @@ app.get("/register", (req, res) => {
     `client_id=${CLIENT_ID}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state")}` +
+    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state user-read-private")}` +
     `&state=${state}`;
 
   res.send(`
@@ -146,8 +146,9 @@ app.get("/callback", async (req, res) => {
       </html>
     `);
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.send("❌ Erro ao obter token.");
+    const errorDetail = err.response?.data || err.message;
+    console.error("❌ Erro no callback:", JSON.stringify(errorDetail));
+    res.send(`❌ Erro ao obter token: ${JSON.stringify(errorDetail)}`);
   }
 });
 
