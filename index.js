@@ -190,8 +190,8 @@ app.get("/callback", async (req, res) => {
 
     await saveUser(lastfmUser, commandId, sessionKey);
 
-    // Redireciona para a pagina de escolha de formato
-    res.redirect(`/formato/${commandId}`);
+    // Redireciona para a pagina de escolha de formato (usa BASE_URL completa por causa do proxy do Vercel)
+    res.redirect(`${BASE_URL}/formato/${commandId}`);
   } catch (err) {
     const detail = err.response?.data || err.message;
     console.error("Erro no callback:", JSON.stringify(detail));
@@ -218,7 +218,7 @@ app.get("/formato/:commandId", async (req, res) => {
         <h2 style="text-align:center;">🎵 Escolha o formato do comando</h2>
         <p style="color:#aaa;text-align:center;">Conta: <strong>${user.lastfm_user}</strong></p>
 
-        <form method="POST" action="/formato/${commandId}">
+        <form method="POST" action="${BASE_URL}/formato/${commandId}">
           <p style="color:#aaa;font-size:14px;margin-top:30px;">Formatos prontos:</p>
 
           <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
@@ -297,7 +297,7 @@ app.post("/formato/:commandId", async (req, res) => {
         <p style="color:#aaa;font-size:13px;">StreamElements:</p>
         <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">${"${customapi." + BASE_URL + "/musica/" + commandId + "}"}</code>
         <br><br>
-        <a href="/formato/${commandId}" style="color:#1DB954;font-size:13px;">Alterar formato novamente</a>
+        <a href="${BASE_URL}/formato/${commandId}" style="color:#1DB954;font-size:13px;">Alterar formato novamente</a>
       </body>
     </html>
   `);
