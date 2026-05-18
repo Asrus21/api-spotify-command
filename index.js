@@ -47,8 +47,7 @@ const T = {
     authFooter: "Já tem conta na Last.fm com o Spotify conectado? É só clicar no botão acima.",
     fmtTitle: "🎵 Escolha o formato do comando",
     fmtAccount: "Conta",
-    fmtPresets: "Formatos prontos:",
-    fmtCustomLabel: "✏️ Personalizar (escreva o seu abaixo)",
+    fmtPresets: "Formatos prontos (clique para usar):",
     fmtCustomField: "Formato personalizado:",
     fmtPlaceholders: "Placeholders disponíveis:",
     fmtSave: "Salvar formato",
@@ -88,8 +87,7 @@ const T = {
     authFooter: "Already have a Last.fm account with Spotify connected? Just click the button above.",
     fmtTitle: "🎵 Choose the command format",
     fmtAccount: "Account",
-    fmtPresets: "Ready-made formats:",
-    fmtCustomLabel: "✏️ Customize (write your own below)",
+    fmtPresets: "Ready-made formats (click to use):",
     fmtCustomField: "Custom format:",
     fmtPlaceholders: "Available placeholders:",
     fmtSave: "Save format",
@@ -376,27 +374,24 @@ app.get("/formato/:commandId", async (req, res) => {
           <form method="POST" action="${BASE_URL}/formato/${commandId}?lang=${lang}">
             <p style="color:#aaa;font-size:14px;margin-top:30px;">${t.fmtPresets}</p>
 
-            ${t.presets.map((preset, i) => {
+            ${t.presets.map((preset) => {
               // Monta o exemplo aplicando dados ficticios ao formato
               const exemplo = applyFormat(preset, {
                 nome: "Blinding Lights",
                 artista: "The Weeknd",
                 link: "link",
               });
+              // Escapa aspas para uso seguro no atributo data
+              const safePreset = preset.replace(/"/g, "&quot;");
               return `
-            <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="${preset.replace(/"/g, "&quot;")}" ${i === 0 ? "checked" : ""}>
+            <div class="preset-option" data-format="${safePreset}"
+              style="background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;font-size:14px;">
               ${exemplo}
-            </label>`;
+            </div>`;
             }).join("")}
 
-            <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="custom">
-              ${t.fmtCustomLabel}
-            </label>
-
-            <p style="color:#aaa;font-size:14px;margin-top:20px;">${t.fmtCustomField}</p>
-            <input type="text" name="custom_format" value="${currentFormat.replace(/"/g, "&quot;")}"
+            <p style="color:#aaa;font-size:14px;margin-top:24px;">${t.fmtCustomField}</p>
+            <input type="text" id="customFormat" name="custom_format" value="${currentFormat.replace(/"/g, "&quot;")}"
               style="width:100%;padding:12px;border-radius:8px;border:none;font-size:14px;box-sizing:border-box;">
             <p style="color:#777;font-size:12px;">
               ${t.fmtPlaceholders} <code>{nome}</code> <code>{artista}</code> <code>{link}</code>
@@ -406,6 +401,20 @@ app.get("/formato/:commandId", async (req, res) => {
               ${t.fmtSave}
             </button>
           </form>
+
+          <script>
+            // Ao clicar num formato pronto, preenche o campo personalizado
+            document.querySelectorAll(".preset-option").forEach(function (el) {
+              el.addEventListener("click", function () {
+                document.getElementById("customFormat").value = el.getAttribute("data-format");
+                // Destaca visualmente o selecionado
+                document.querySelectorAll(".preset-option").forEach(function (o) {
+                  o.style.outline = "none";
+                });
+                el.style.outline = "2px solid #1DB954";
+              });
+            });
+          </script>
 
         </div>
       </body>
@@ -422,10 +431,8 @@ app.post("/formato/:commandId", async (req, res) => {
 
   if (!user) return res.send(t.invalidId);
 
-  let format = req.body.preset;
-  if (format === "custom") {
-    format = req.body.custom_format || DEFAULT_FORMAT;
-  }
+  // O comando usa sempre o que estiver no campo personalizado
+  const format = (req.body.custom_format || "").trim() || DEFAULT_FORMAT;
 
   await saveFormat(commandId, format);
 
