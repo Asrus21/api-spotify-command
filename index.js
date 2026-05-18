@@ -52,7 +52,12 @@ const T = {
     fmtCustomField: "Formato personalizado:",
     fmtPlaceholders: "Placeholders disponíveis:",
     fmtSave: "Salvar formato",
-    fmtPresetNoLink: "Blinding Lights (The Weeknd) — sem link",
+    presets: [
+      "Tocando agora: {nome} - {artista} | {link}",
+      "🎵 {nome} por {artista} 👉 {link}",
+      "{artista} - {nome} | Ouça: {link}",
+      "{nome} ({artista})",
+    ],
     okTitle: "✅ Formato salvo!",
     okPreview: "Seu comando vai aparecer assim:",
     okCmdLink: "Link do comando para o bot:",
@@ -88,7 +93,12 @@ const T = {
     fmtCustomField: "Custom format:",
     fmtPlaceholders: "Available placeholders:",
     fmtSave: "Save format",
-    fmtPresetNoLink: "Blinding Lights (The Weeknd) — no link",
+    presets: [
+      "Now playing: {nome} - {artista} | {link}",
+      "🎵 {nome} by {artista} 👉 {link}",
+      "{artista} - {nome} | Listen: {link}",
+      "{nome} ({artista})",
+    ],
     okTitle: "✅ Format saved!",
     okPreview: "Your command will look like this:",
     okCmdLink: "Command link for your bot:",
@@ -366,25 +376,19 @@ app.get("/formato/:commandId", async (req, res) => {
           <form method="POST" action="${BASE_URL}/formato/${commandId}?lang=${lang}">
             <p style="color:#aaa;font-size:14px;margin-top:30px;">${t.fmtPresets}</p>
 
+            ${t.presets.map((preset, i) => {
+              // Monta o exemplo aplicando dados ficticios ao formato
+              const exemplo = applyFormat(preset, {
+                nome: "Blinding Lights",
+                artista: "The Weeknd",
+                link: "link",
+              });
+              return `
             <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="Tocando agora: {nome} - {artista} | {link}" checked>
-              Tocando agora: Blinding Lights - The Weeknd | link
-            </label>
-
-            <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="🎵 {nome} por {artista} 👉 {link}">
-              🎵 Blinding Lights por The Weeknd 👉 link
-            </label>
-
-            <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="{artista} - {nome} | Ouca: {link}">
-              The Weeknd - Blinding Lights | Ouça: link
-            </label>
-
-            <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="{nome} ({artista})">
-              ${t.fmtPresetNoLink}
-            </label>
+              <input type="radio" name="preset" value="${preset.replace(/"/g, "&quot;")}" ${i === 0 ? "checked" : ""}>
+              ${exemplo}
+            </label>`;
+            }).join("")}
 
             <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
               <input type="radio" name="preset" value="custom">
