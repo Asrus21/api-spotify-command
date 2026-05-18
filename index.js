@@ -144,16 +144,90 @@ app.get("/register", (req, res) => {
 
   res.send(`
     <html>
-      <body style="font-family:sans-serif;text-align:center;padding:60px;background:#191414;color:#fff;">
-        <h2>Now Playing - Comando de Live</h2>
-        <p style="color:#aaa;max-width:420px;margin:16px auto;">
-          Conecte sua conta Last.fm. Se voce ainda nao tem, crie uma e conecte seu Spotify nas configuracoes da Last.fm (scrobbling).
-        </p>
-        <p style="margin:30px 0">
-          <a href="${authUrl}" style="background:#d51007;color:#fff;padding:14px 28px;border-radius:30px;text-decoration:none;font-weight:bold;font-size:16px;">
-            Autorizar com Last.fm
-          </a>
-        </p>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Now Playing - Comando de Live</title>
+      </head>
+      <body style="font-family:sans-serif;background:#191414;color:#fff;margin:0;padding:40px 20px;">
+        <div style="max-width:560px;margin:0 auto;">
+
+          <h1 style="text-align:center;font-size:24px;">🎵 Comando "Tocando Agora"</h1>
+          <p style="color:#aaa;text-align:center;margin-bottom:36px;">
+            Siga os passos abaixo para liberar o comando que mostra a música que você está ouvindo na live.
+          </p>
+
+          <!-- Passo 1 -->
+          <div style="background:#282828;border-radius:12px;padding:20px;margin-bottom:16px;">
+            <h3 style="margin:0 0 8px;">
+              <span style="background:#d51007;border-radius:50%;padding:2px 10px;margin-right:8px;">1</span>
+              Criar conta na Last.fm
+            </h3>
+            <p style="color:#bbb;font-size:14px;margin:8px 0;">
+              Acesse o site da Last.fm e crie uma conta gratuita (pode usar e-mail ou login com Google).
+            </p>
+            <a href="https://www.last.fm/join" target="_blank"
+              style="color:#d51007;font-size:14px;font-weight:bold;text-decoration:none;">
+              ➜ Criar conta na Last.fm
+            </a>
+          </div>
+
+          <!-- Passo 2 -->
+          <div style="background:#282828;border-radius:12px;padding:20px;margin-bottom:16px;">
+            <h3 style="margin:0 0 8px;">
+              <span style="background:#d51007;border-radius:50%;padding:2px 10px;margin-right:8px;">2</span>
+              Confirmar o e-mail
+            </h3>
+            <p style="color:#bbb;font-size:14px;margin:8px 0;">
+              A Last.fm envia um e-mail de confirmação. Abra sua caixa de entrada e clique no link
+              para ativar a conta. Verifique também a pasta de spam.
+            </p>
+          </div>
+
+          <!-- Passo 3 -->
+          <div style="background:#282828;border-radius:12px;padding:20px;margin-bottom:16px;">
+            <h3 style="margin:0 0 8px;">
+              <span style="background:#d51007;border-radius:50%;padding:2px 10px;margin-right:8px;">3</span>
+              Conectar o Spotify à Last.fm
+            </h3>
+            <p style="color:#bbb;font-size:14px;margin:8px 0;">
+              Isso faz a Last.fm registrar tudo que você ouve no Spotify. Acesse as configurações de
+              aplicativos da Last.fm, encontre o <strong>Spotify</strong> e clique em conectar.
+            </p>
+            <a href="https://www.last.fm/settings/applications" target="_blank"
+              style="color:#d51007;font-size:14px;font-weight:bold;text-decoration:none;">
+              ➜ Abrir configurações de aplicativos da Last.fm
+            </a>
+            <p style="color:#777;font-size:12px;margin-top:10px;">
+              ⚠️ Sem esse passo o comando não funciona, pois a Last.fm não saberá o que você está ouvindo.
+            </p>
+          </div>
+
+          <!-- Passo 4 -->
+          <div style="background:#282828;border-radius:12px;padding:20px;margin-bottom:28px;">
+            <h3 style="margin:0 0 8px;">
+              <span style="background:#1DB954;border-radius:50%;padding:2px 10px;margin-right:8px;color:#000;">4</span>
+              Autorizar e gerar o comando
+            </h3>
+            <p style="color:#bbb;font-size:14px;margin:8px 0;">
+              Com a conta criada e o Spotify conectado, clique no botão abaixo para autorizar e
+              receber o link do seu comando.
+            </p>
+          </div>
+
+          <!-- Botao de autorizacao -->
+          <div style="text-align:center;">
+            <a href="${authUrl}"
+              style="background:#d51007;color:#fff;padding:16px 36px;border-radius:30px;text-decoration:none;font-weight:bold;font-size:17px;display:inline-block;">
+              ✅ Autorizar Spotify (via Last.fm)
+            </a>
+          </div>
+
+          <p style="color:#777;font-size:12px;text-align:center;margin-top:24px;">
+            Já tem conta na Last.fm com o Spotify conectado? É só clicar no botão acima.
+          </p>
+
+        </div>
       </body>
     </html>
   `);
