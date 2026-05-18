@@ -367,8 +367,8 @@ app.get("/formato/:commandId", async (req, res) => {
             <p style="color:#aaa;font-size:14px;margin-top:30px;">${t.fmtPresets}</p>
 
             <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
-              <input type="radio" name="preset" value="Tocando agora: {nome} - {artista} | {link}" checked>
-              Tocando agora: Blinding Lights - The Weeknd | link
+              <input type="radio" name="preset" value="Playing now: {nome} - {artista} | {link}" checked>
+              Playing now: Blinding Lights - The Weeknd | link
             </label>
 
             <label style="display:block;background:#282828;padding:14px;border-radius:8px;margin:8px 0;cursor:pointer;">
