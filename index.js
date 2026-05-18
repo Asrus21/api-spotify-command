@@ -182,6 +182,17 @@ app.get("/register", (req, res) => {
               A Last.fm envia um e-mail de confirmação. Abra sua caixa de entrada e clique no link
               para ativar a conta. Verifique também a pasta de spam.
             </p>
+            <p style="color:#bbb;font-size:14px;margin:8px 0;">
+              <strong>Não chegou em até 1 minuto?</strong> Solicite o reenvio da confirmação:
+            </p>
+            <a href="https://www.last.fm/settings/sendverification" target="_blank"
+              style="color:#d51007;font-size:14px;font-weight:bold;text-decoration:none;">
+              ➜ Reenviar e-mail de confirmação
+            </a>
+            <p style="color:#777;font-size:12px;margin-top:10px;">
+              Você precisa estar logado na Last.fm para reenviar. Aguarde mais alguns minutos e
+              cheque a pasta de spam/lixo eletrônico novamente.
+            </p>
           </div>
 
           <!-- Passo 3 -->
