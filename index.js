@@ -1,15 +1,18 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
+const crypto = require("crypto");
 const { v4: uuidv4 } = require("uuid");
 const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-const REDIRECT_URI = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
+
+// ─── Credenciais da Last.fm ───────────────────────────────────────────────────
+const LASTFM_API_KEY = process.env.LASTFM_API_KEY;
+const LASTFM_SECRET = process.env.LASTFM_SECRET;
+const LASTFM_API = "https://ws.audioscrobbler.com/2.0/";
 
 // ─── Banco de dados PostgreSQL ────────────────────────────────────────────────
 const pool = new Pool({
@@ -18,70 +21,64 @@ const pool = new Pool({
 });
 
 async function initDB() {
-  // Cria a tabela se não existir
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS tokens (
-      spotify_id    TEXT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS lastfm_users (
+      lastfm_user   TEXT PRIMARY KEY,
       command_id    TEXT UNIQUE NOT NULL,
-      access_token  TEXT,
-      refresh_token TEXT,
+      session_key   TEXT,
       created_at    TIMESTAMP DEFAULT NOW()
     )
   `);
-
-  // Migração segura: adiciona colunas novas se ainda não existirem
-  await pool.query(`
-    ALTER TABLE tokens
-    ADD COLUMN IF NOT EXISTS spotify_id TEXT,
-    ADD COLUMN IF NOT EXISTS command_id TEXT
-  `).catch(() => {}); // ignora se já existir
-
   console.log("✅ Banco de dados pronto.");
 }
 
-async function getUserBySpotifyId(spotifyId) {
-  const res = await pool.query("SELECT * FROM tokens WHERE spotify_id = $1", [spotifyId]);
+async function getUserByLastfm(lastfmUser) {
+  const res = await pool.query("SELECT * FROM lastfm_users WHERE lastfm_user = $1", [lastfmUser]);
   return res.rows[0] || null;
 }
 
 async function getUserByCommandId(commandId) {
-  const res = await pool.query("SELECT * FROM tokens WHERE command_id = $1", [commandId]);
+  const res = await pool.query("SELECT * FROM lastfm_users WHERE command_id = $1", [commandId]);
   return res.rows[0] || null;
 }
 
-async function saveUser(spotifyId, commandId, accessToken, refreshToken) {
+async function saveUser(lastfmUser, commandId, sessionKey) {
   await pool.query(`
-    INSERT INTO tokens (spotify_id, command_id, access_token, refresh_token)
-    VALUES ($1, $2, $3, $4)
-    ON CONFLICT (spotify_id) DO UPDATE
-    SET access_token = $3, refresh_token = $4
-  `, [spotifyId, commandId, accessToken, refreshToken]);
+    INSERT INTO lastfm_users (lastfm_user, command_id, session_key)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (lastfm_user) DO UPDATE
+    SET session_key = $3
+  `, [lastfmUser, commandId, sessionKey]);
 }
 
-async function updateAccessToken(spotifyId, accessToken) {
-  await pool.query("UPDATE tokens SET access_token = $1 WHERE spotify_id = $2", [accessToken, spotifyId]);
+// ─── Assinatura de chamadas da Last.fm ────────────────────────────────────────
+// A Last.fm exige um api_sig: md5 de todos os params ordenados + secret
+function signRequest(params) {
+  const sorted = Object.keys(params).sort();
+  let signString = "";
+  for (const key of sorted) {
+    signString += key + params[key];
+  }
+  signString += LASTFM_SECRET;
+  return crypto.createHash("md5").update(signString, "utf8").digest("hex");
 }
 
-// ─── ROTA 1: Gerar link de autorização ───────────────────────────────────────
+// ─── ROTA 1: Link de autorização ──────────────────────────────────────────────
 app.get("/register", (req, res) => {
-  // Gera um state temporário só para o fluxo OAuth
-  const state = uuidv4().replace(/-/g, "").slice(0, 12);
-
-  const authUrl =
-    `https://accounts.spotify.com/authorize?` +
-    `client_id=${CLIENT_ID}` +
-    `&response_type=code` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
-    `&scope=${encodeURIComponent("user-read-currently-playing user-read-playback-state user-read-private")}` +
-    `&state=${state}`;
+  // A Last.fm redireciona de volta para o callback após autorizar
+  const callbackUrl = `${BASE_URL}/callback`;
+  const authUrl = `https://www.last.fm/api/auth/?api_key=${LASTFM_API_KEY}&cb=${encodeURIComponent(callbackUrl)}`;
 
   res.send(`
     <html>
       <body style="font-family:sans-serif;text-align:center;padding:60px;background:#191414;color:#fff;">
-        <h2>🎵 Spotify Now Playing</h2>
+        <h2>🎵 Now Playing — Comando de Live</h2>
+        <p style="color:#aaa;max-width:420px;margin:16px auto;">
+          Conecte sua conta Last.fm. Se você ainda nao tem, crie uma e conecte seu Spotify nas configuracoes da Last.fm (scrobbling).
+        </p>
         <p style="margin:30px 0">
-          <a href="${authUrl}" style="background:#1DB954;color:#000;padding:14px 28px;border-radius:30px;text-decoration:none;font-weight:bold;font-size:16px;">
-            ✅ Autorizar Spotify
+          <a href="${authUrl}" style="background:#d51007;color:#fff;padding:14px 28px;border-radius:30px;text-decoration:none;font-weight:bold;font-size:16px;">
+            ✅ Autorizar com Last.fm
           </a>
         </p>
       </body>
@@ -89,48 +86,44 @@ app.get("/register", (req, res) => {
   `);
 });
 
-// ─── ROTA 2: Callback do Spotify ──────────────────────────────────────────────
+// ─── ROTA 2: Callback da Last.fm ──────────────────────────────────────────────
 app.get("/callback", async (req, res) => {
-  const { code } = req.query;
+  const { token } = req.query;
 
-  if (!code) return res.send("❌ Autorização negada.");
+  if (!token) return res.send("❌ Autorização negada.");
 
   try {
-    // 1. Pega os tokens
-    const tokenRes = await axios.post(
-      "https://accounts.spotify.com/api/token",
-      new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: REDIRECT_URI,
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-      }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-    );
+    // Troca o token por uma sessao permanente (auth.getSession)
+    const params = {
+      method: "auth.getSession",
+      api_key: LASTFM_API_KEY,
+      token: token,
+    };
+    const api_sig = signRequest(params);
 
-    const accessToken = tokenRes.data.access_token;
-    const refreshToken = tokenRes.data.refresh_token;
-
-    // 2. Busca o ID real do usuário no Spotify
-    const profileRes = await axios.get("https://api.spotify.com/v1/me", {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const sessionRes = await axios.get(LASTFM_API, {
+      params: { ...params, api_sig, format: "json" },
     });
 
-    const spotifyId = profileRes.data.id;
+    const session = sessionRes.data.session;
+    if (!session) {
+      return res.send("❌ Erro ao criar sessao na Last.fm.");
+    }
 
-    // 3. Verifica se já existe um command_id para essa conta
-    const existing = await getUserBySpotifyId(spotifyId);
+    const lastfmUser = session.name;
+    const sessionKey = session.key;
+
+    // Mantem o command_id se a conta ja existir
+    const existing = await getUserByLastfm(lastfmUser);
     const commandId = existing ? existing.command_id : uuidv4().replace(/-/g, "").slice(0, 12);
 
-    // 4. Salva ou atualiza os tokens
-    await saveUser(spotifyId, commandId, accessToken, refreshToken);
+    await saveUser(lastfmUser, commandId, sessionKey);
 
     res.send(`
       <html>
         <body style="font-family:sans-serif;text-align:center;padding:60px;background:#191414;color:#fff;">
           <h2>✅ Autorizado com sucesso!</h2>
-          <p style="color:#aaa;">Conta Spotify: <strong>${profileRes.data.display_name || spotifyId}</strong></p>
+          <p style="color:#aaa;">Conta Last.fm: <strong>${lastfmUser}</strong></p>
           <p style="color:#aaa;margin-top:24px;">Use o link abaixo no seu bot:</p>
           <code style="background:#333;padding:12px 24px;border-radius:6px;display:inline-block;margin:16px 0;font-size:15px;">
             ${BASE_URL}/musica/${commandId}
@@ -142,77 +135,59 @@ app.get("/callback", async (req, res) => {
           <p style="color:#aaa;font-size:13px;">StreamElements:</p>
           <code style="background:#222;padding:8px 16px;border-radius:6px;display:inline-block;">${"${customapi." + BASE_URL + "/musica/" + commandId + "}"}</code>
           <br><br>
+          <p style="color:#d51007;font-size:13px;">⚠️ Lembre de conectar o Spotify a sua Last.fm para o scrobbling funcionar.</p>
         </body>
       </html>
     `);
   } catch (err) {
-    const errorDetail = err.response?.data || err.message;
-    console.error("❌ Erro no callback:", JSON.stringify(errorDetail));
-    res.send(`❌ Erro ao obter token: ${JSON.stringify(errorDetail)}`);
+    const detail = err.response?.data || err.message;
+    console.error("❌ Erro no callback:", JSON.stringify(detail));
+    res.send(`❌ Erro ao obter sessao: ${JSON.stringify(detail)}`);
   }
 });
 
-// ─── Refresh do token ─────────────────────────────────────────────────────────
-async function refreshAccessToken(spotifyId, refreshToken) {
-  const res = await axios.post(
-    "https://accounts.spotify.com/api/token",
-    new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-    }),
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-  );
+// ─── Buscar musica atual (user.getRecentTracks) ───────────────────────────────
+async function fetchNowPlaying(lastfmUser) {
+  const res = await axios.get(LASTFM_API, {
+    params: {
+      method: "user.getRecentTracks",
+      user: lastfmUser,
+      api_key: LASTFM_API_KEY,
+      format: "json",
+      limit: 1,
+    },
+  });
 
-  await updateAccessToken(spotifyId, res.data.access_token);
-  return res.data.access_token;
+  const tracks = res.data.recenttracks?.track;
+  if (!tracks || tracks.length === 0) return null;
+
+  const track = Array.isArray(tracks) ? tracks[0] : tracks;
+
+  // A flag @attr.nowplaying indica se esta tocando agora
+  const isNowPlaying = track["@attr"] && track["@attr"].nowplaying === "true";
+  if (!isNowPlaying) return null;
+
+  const name = track.name;
+  const artist = track.artist["#text"] || track.artist.name;
+  const url = track.url;
+
+  return `🎵 Tocando agora: ${name} - ${artist} | ${url}`;
 }
 
-// ─── Buscar música atual ───────────────────────────────────────────────────────
-async function fetchCurrentTrack(token) {
-  const playing = await axios.get(
-    "https://api.spotify.com/v1/me/player/currently-playing",
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-
-  if (!playing.data || playing.status === 204 || !playing.data.item || !playing.data.is_playing) {
-    return null;
-  }
-
-  // Suporte a músicas e podcasts
-  const item = playing.data.item;
-  if (playing.data.currently_playing_type === "episode") {
-    return `🎙️ Ouvindo agora: ${item.name} - ${item.show?.name} | ${item.external_urls.spotify}`;
-  }
-
-  return `🎵 Tocando agora: ${item.name} - ${item.artists.map((a) => a.name).join(", ")} | ${item.external_urls.spotify}`;
-}
-
-// ─── ROTA 3: Música atual ─────────────────────────────────────────────────────
+// ─── ROTA 3: Musica atual ─────────────────────────────────────────────────────
 app.get("/musica/:commandId", async (req, res) => {
   const { commandId } = req.params;
   const user = await getUserByCommandId(commandId);
 
-  if (!user || !user.access_token) {
-    return res.send("❌ ID inválido ou não autorizado.");
+  if (!user) {
+    return res.send("❌ ID invalido ou nao autorizado.");
   }
 
   try {
-    const result = await fetchCurrentTrack(user.access_token);
+    const result = await fetchNowPlaying(user.lastfm_user);
     if (!result) return res.send("😶 Não está sendo tocado nada agora.");
     res.send(result);
   } catch (err) {
-    if (err.response?.status === 401) {
-      try {
-        const newToken = await refreshAccessToken(user.spotify_id, user.refresh_token);
-        const result = await fetchCurrentTrack(newToken);
-        if (!result) return res.send("😶 Não está sendo tocado nada agora.");
-        return res.send(result);
-      } catch {
-        return res.send("❌ Sessão expirada. Reautorize em /register");
-      }
-    }
     console.error(err.response?.data || err.message);
     res.send("❌ Erro ao buscar música.");
   }
